@@ -52,12 +52,6 @@ var baseAppSettings = {
   // Required credential settings for managed identity
   AzureWebJobsStorage__credential: 'managedidentity'
   AzureWebJobsStorage__clientId: identityClientId
-  
-  // Windows-specific runtime settings (always dotnet-isolated for MCP)
-  FUNCTIONS_WORKER_RUNTIME: 'dotnet-isolated'
-  FUNCTIONS_EXTENSION_VERSION: '~4'
-  WEBSITE_CONTENTAZUREFILECONNECTIONSTRING: 'DefaultEndpointsProtocol=https;AccountName=${stg.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${stg.listKeys().keys[0].value}'
-  WEBSITE_CONTENTSHARE: toLower(name)
 }
 
 // Application Insights settings (when available)
