@@ -45,9 +45,9 @@ param identityType string = 'UserAssigned'
 param preAuthorizedClientIds array = []
 
 var applicationInsightsIdentity = 'ClientId=${identityClientId};Authorization=AAD'
-var kind = 'functionapp' // Windows function app (no 'linux' suffix)
+var kind = 'functionapp'
 
-// Create base application settings for Windows Standard Plan MCP Function App
+// Create base application settings for Flex Consumption - MCP Function App
 var baseAppSettings = {
   // Required credential settings for managed identity
   AzureWebJobsStorage__credential: 'managedidentity'
