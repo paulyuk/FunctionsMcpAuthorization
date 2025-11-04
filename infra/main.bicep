@@ -70,6 +70,8 @@ param resourceGroupName string = ''
 param storageAccountName string = ''
 @description('Id of the user identity to be used for testing and debugging. This is not required in production. Leave empty if not needed.')
 param principalId string = deployer().objectId
+param vnetEnabled bool = false
+var deploymentStorageContainerName = 'app-package-${take(functionAppName, 32)}-${take(toLower(uniqueString(functionAppName, resourceToken)), 7)}'
 
 
 // NOTE: VNet integration and private endpoints are not supported with Windows Consumption (Y1 Dynamic) plans
@@ -102,17 +104,17 @@ module mcpUserAssignedIdentity 'br/public:avm/res/managed-identity/user-assigned
   }
 }
 
-// Create a Standard App Service Plan for Windows Functions
+// Create an App Service Plan to group applications under the same payment plan and SKU
 module appServicePlan 'br/public:avm/res/web/serverfarm:0.1.1' = {
   name: 'appserviceplan'
   scope: rg
   params: {
     name: !empty(appServicePlanName) ? appServicePlanName : '${abbrs.webServerFarms}${resourceToken}'
     sku: {
-      name: 'S1'
-      tier: 'Standard'
+      name: 'FC1'
+      tier: 'FlexConsumption'
     }
-    reserved: false
+    reserved: true
     location: location
     tags: tags
   }
@@ -149,20 +151,29 @@ module storage 'br/public:avm/res/storage/storage-account:0.8.3' = {
   params: {
     name: !empty(storageAccountName) ? storageAccountName : '${abbrs.storageStorageAccounts}${resourceToken}'
     allowBlobPublicAccess: false
-    allowSharedKeyAccess: true // needed for Files
+    allowSharedKeyAccess: false // Disable local authentication methods as per policy
     dnsEndpointType: 'Standard'
-    publicNetworkAccess: 'Enabled' // Windows Consumption requires public access
-    networkAcls: {
+    publicNetworkAccess: vnetEnabled ? 'Disabled' : 'Enabled'
+    // When vNet is enabled, restrict access but allow Azure services
+    networkAcls: vnetEnabled ? {
+      defaultAction: 'Deny'
+      bypass: 'AzureServices' // Allow Azure services including AI Agent service
+    } : {
       defaultAction: 'Allow'
       bypass: 'AzureServices'
     }
     blobServices: {
-      containers: []  // Windows Consumption doesn't need deployment containers like Flex Consumption
+      containers: [{name: deploymentStorageContainerName}]
+    }
+    queueServices: {
+      queues: [
+        { name: 'input' }
+        { name: 'output' }
+      ]
     }
     minimumTlsVersion: 'TLS1_2'  // Enforcing TLS 1.2 for better security
     location: location
     tags: tags
-    skuName: 'Standard_LRS'  // Standard performance with locally redundant storage
   }
 }
 
@@ -176,6 +187,10 @@ module mcp './app/mcp.bicep' = {
     applicationInsightsName: monitoring.outputs.name
     appServicePlanId: appServicePlan.outputs.resourceId
     storageAccountName: storage.outputs.name
+    runtimeName: 'dotnet-isolated'
+    runtimeVersion: '9.0'
+    virtualNetworkSubnetId: ''
+    deploymentStorageContainerName: deploymentStorageContainerName
     enableBlob: storageEndpointConfig.enableBlob
     enableQueue: storageEndpointConfig.enableQueue
     enableTable: storageEndpointConfig.enableTable

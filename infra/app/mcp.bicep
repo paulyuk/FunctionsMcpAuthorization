@@ -12,6 +12,12 @@ param identityClientId string = ''
 param enableBlob bool = true
 param enableQueue bool = false
 param enableTable bool = false
+param deploymentStorageContainerName string
+param instanceMemoryMB int = 2048
+param maximumInstanceCount int = 100
+param runtimeName string 
+param runtimeVersion string
+param virtualNetworkSubnetId string = ''
 
 // Authorization parameters
 @description('The Entra ID application (client) ID for App Service Authentication')
@@ -97,9 +103,10 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' existing
   name: applicationInsightsName
 }
 
-// Create a Windows Standard Plan Function App to host the MCP Server
+
+// Create a Flex Consumption Function App to host the API
 module mcp 'br/public:avm/res/web/site:0.15.1' = {
-  name: '${serviceName}-windows-standard'
+  name: '${serviceName}-flex-consumption'
   params: {
     kind: kind
     name: name
@@ -112,16 +119,34 @@ module mcp 'br/public:avm/res/web/site:0.15.1' = {
         '${identityId}'
       ]
     }
-    siteConfig: {
-      alwaysOn: true // Standard plans support and benefit from Always On
-      netFrameworkVersion: 'v8.0' // For .NET 8
-      use32BitWorkerProcess: false
-      ftpsState: 'Disabled'
-      minTlsVersion: '1.2'
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: '${stg.properties.primaryEndpoints.blob}${deploymentStorageContainerName}'
+          authentication: {
+            type: identityType == 'SystemAssigned' ? 'SystemAssignedIdentity' : 'UserAssignedIdentity'
+            userAssignedIdentityResourceId: identityType == 'UserAssigned' ? identityId : '' 
+          }
+        }
+      }
+      scaleAndConcurrency: {
+        instanceMemoryMB: instanceMemoryMB
+        maximumInstanceCount: maximumInstanceCount
+      }
+      runtime: {
+        name: runtimeName
+        version: runtimeVersion
+      }
     }
+    siteConfig: {
+      alwaysOn: false
+    }
+    virtualNetworkSubnetId: !empty(virtualNetworkSubnetId) ? virtualNetworkSubnetId : null
     appSettingsKeyValuePairs: allAppSettings
   }
 }
+
 
 // Configure App Service Authentication v2 (if auth parameters are provided)
 resource authSettings 'Microsoft.Web/sites/config@2023-12-01' = if (!empty(authClientId) && !empty(authTenantId)) {
